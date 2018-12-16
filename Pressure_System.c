@@ -52,16 +52,20 @@ void initTimer(void) {
   // Notice we haven't set the timer1 interrupt flag yet
 }
 
+/* It would be a good idea to describe what this ISR does, just to be clear.
+ * It appears you are trying to increment a counter and possibly toggle an LED?
+ * The toggle may be too fast to be noticable, given it would take a cycle or two 
+ * to actually toggle. */
 ISR(TIMER1_COMPA_vect) {
   toggle_bit(M0S_PORT,M0S);
   stepCounter++;
 }
 
 void waitForButton(void){ 
-  while(bit_is_set(Button_PIN, Button)){ 
+  while(bit_is_set(Button_PIN, Button)){  /* Depending upon the return value, this may be skipped and not wait for it to be set */
   }
   _delay_ms(20);
-  while(bit_is_clear(Button_PIN, Button)){    
+  while(bit_is_clear(Button_PIN, Button)){   
   }
 }
 
@@ -73,7 +77,7 @@ void takeSteps(uint16_t howManySteps, uint8_t direction) {
     set_bit(M0D_PORT,M0D);
   }
   stepCounter = 0;               // initialize steps
-  set_bit(TIMSK1, OCIE1A); 	// turn on interrupts, stepping     
+  set_bit(TIMSK1, OCIE1A); 	// turn on interrupts, stepping    /* You may want to make a macro for turning this interrupt on for ease of reading */
   while (!(stepCounter == howManySteps*2*MICROSTEPS)) {;
   }                            // wait
   clear_bit(TIMSK1,OCIE1A);   // turn back off
@@ -91,14 +95,14 @@ void pressureCycle(void){
 	
   // Move forward to 10 Pa, 2 Pa
   uint8_t INC = 1;
-  while (INC <= NUMBER_INC){
+  while (INC <= NUMBER_INC){		/* Be careful about overflow here since you are using unsigned numbers */
     takeSteps(PRESSURE_INC, forward);
     waitForButton();
     INC++; 
   }	 
 	
   INC = 1;
-  while (INC <= NUMBER_INC*2){
+  while (INC <= NUMBER_INC*2){ 		/* Be careful about overflow here since you are using unsigned numbers */
     takeSteps(PRESSURE_INC,backward);
     INC++;
   }
@@ -109,7 +113,7 @@ void pressureCycle(void){
   waitForButton();
 	
   INC = 1;
-  while (INC <= NUMBER_INC){
+  while (INC <= NUMBER_INC){		/* Be careful about overflow here since you are using unsigned numbers */
     takeSteps(PRESSURE_INC,forward);
     waitForButton();
     INC++;
@@ -122,6 +126,16 @@ int main(void) {
   initMotorsButton();
   initTimer();
   pressureCycle();
-  return 0;
+  return 0;		
+  /* With embedded systems, you usually don't want a reutrn here
+  With GCC, you can use the following to make a non returnable function
+  and cause it to not remove an infinite loop at the end of your function (Most likley)
+
+  __attribute__((noreturn)) void main (void ){ 
+  
+  	while( 1 );	Loop to catch errors; get stuck here. maybe watchdog will reset otherwise if you enabeld it
+  }
+
+  */
 }
 
