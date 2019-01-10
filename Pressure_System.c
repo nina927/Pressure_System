@@ -22,11 +22,14 @@
 #define turn_on_interrupt       set_bit(TIMSK1, OCIE1A);    /*  Set timer 1 interrupt flag */
 #define turn_off_interrupt      clear_bit(TIMSK1, OCIE1A);  /*  Clear timer 1 interrupt flag */
 
-#define MICROSTEPS    16      /* 1/16th microstepping */
+#define MICROSTEPS    16        /* 1/16th microstepping */
+#define CLK_FREQ      8000000  /* 8 MHz clock frequency */
+#define PRESCALER     1        /* No prescaler */
+#define STEP_FREQ     100      /* motor frequency in Hz */
+
 #define PRESSURE_INC  71      /* steps to apply one pressure increment (set for 0.25 Pa with  3mL syringe) */
 #define NUMBER_INC    8       /* number of pressure increments to get to max pressure (set for +/-2 Pa) */
 #define OVERSLOP      200     /* steps to overcome hysteresis of syringe piston */     
-#define DELAY         2499     /* frequency=100Hz maybe?? */
 
 #define FORWARD       0      /* Forward direction bit */
 #define BACKWARD      1      /* Backward direction bit */
@@ -34,7 +37,7 @@
 /*  -------- Global Variables --------- */
 
 volatile uint16_t stepCounter = 0;
-volatile uint8_t  buttonState = 0;
+static int period = (CLK_FREQ/2/PRESCALER/MICROSTEPS/STEP_FREQ)-1; /* calculate stepping period from frequency */
 
 /* ------ Functions --------- */
 
@@ -50,13 +53,13 @@ void initTimer(void) {
   clock_prescale_set(clock_div_1);   /*  CPU clock 8 MHz */
   set_bit(TCCR1B,WGM12);             /*  CTC mode */
   set_bit(TCCR1B,CS10);              /*  no prescaler */
-  OCR1A = DELAY;
+  OCR1A = period;
   sei();                            /* enable global interrupts */
   /*  Notice we haven't set the timer1 interrupt flag yet */
 }
 
-/* ISR toggles motor step pin  */
-ISR(TIMER1_COMPA_vect) {
+
+ISR(TIMER1_COMPA_vect) {      /* ISR toggles motor step pin  */
   toggle_bit(M0S_PORT,M0S);
   stepCounter++;
 }
@@ -69,6 +72,7 @@ void waitForButton(void){
   while(bit_is_clear(Button_PIN, Button)){  /* while button is pressed */
   }                                         /*  wait until button is let go  */
 }
+
 
 void takeSteps(uint16_t howManySteps, uint8_t direction) {
   if (!direction) {
@@ -84,27 +88,26 @@ void takeSteps(uint16_t howManySteps, uint8_t direction) {
   turn_off_interrupt;          /* stop stepping */
 }
 
-void overslopAvoidance(void){
-  /* Move back and forth to avoid slop */
+void overslopAvoidance(void){   /* Move back and forth to avoid slop */
   takeSteps(OVERSLOP,BACKWARD);
   _delay_ms(500);    /* avoid skipping steps on direction change */
   takeSteps(OVERSLOP,FORWARD);
   waitForButton();
 }
 
-void moveForward(void){
+void moveForward(void){     /* Move forward one inc at a time, pausing for button press */
   uint8_t inc = 1;
   while (inc <= NUMBER_INC){
-    takeSteps(PRESSURE_INC, FORWARD); /* Be careful about overflow */
+    takeSteps(PRESSURE_INC, FORWARD);
     waitForButton();
     inc++;
   }
 }
 
-void moveBackward(void){
+void moveBackward(void){   /* Move backward two inc */
   uint8_t inc = 1;
   while (inc <= 2*NUMBER_INC){
-    takeSteps(PRESSURE_INC, BACKWARD); /* Be careful about overflow */
+    takeSteps(PRESSURE_INC, BACKWARD);
     inc++;
   }
 }
@@ -120,8 +123,10 @@ void pressureCycle(void){
 
 int main(void){
   initMotorsButton();
-  initTimer();
-  pressureCycle();		
+  initTimer();  
+  while (1){
+  pressureCycle();
+  }  
   return 0;
 }
 
